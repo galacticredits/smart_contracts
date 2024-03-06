@@ -1,0 +1,88 @@
+/**
+ *Submitted for verification at BscScan.com on 2024-03-06
+*/
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
+contract UnionofAssociatedPlanetsVotingSystem {
+    struct Proposal {
+        string description;
+        address proposer;
+        uint endTimestamp;
+        uint yesVotes;
+        uint noVotes;
+        mapping(address => bool) hasVoted;
+        
+    }
+
+     IERC20 public token;
+    uint public proposalCount;
+    uint public quorumPercent;
+    mapping(uint => Proposal) public proposals;
+    mapping(uint => mapping(address => uint)) public tokenSnapshots;
+
+    event ProposalCreated(uint id, string description, address proposer, uint endTimestamp);
+    event Voted(uint proposalId, address voter, bool vote, uint weight);
+
+    constructor(IERC20 _token, uint _quorumPercent) {
+        token = _token;
+        quorumPercent = _quorumPercent;
+    }
+
+    function createProposal(string memory _description, uint _endTimestamp) public {
+    require(token.balanceOf(msg.sender) > 0, "Must be a token holder to submit a proposal");
+
+    Proposal storage proposal = proposals[proposalCount];
+    proposal.description = _description;
+    proposal.proposer = msg.sender;
+    proposal.endTimestamp = _endTimestamp;
+    
+    emit ProposalCreated(proposalCount, _description, msg.sender, _endTimestamp);
+    proposalCount++;
+}
+
+    function vote(uint proposalId, bool _vote) public {
+        Proposal storage proposal = proposals[proposalId];
+        require(!proposal.hasVoted[msg.sender], "Already voted");
+        require(block.timestamp < proposal.endTimestamp, "Voting ended");
+
+        // Taking a snapshot of the voter's token balance at the time of voting
+        tokenSnapshots[proposalId][msg.sender] = token.balanceOf(msg.sender);
+        uint weight = tokenSnapshots[proposalId][msg.sender];
+        
+        if (_vote) {
+            proposal.yesVotes += weight;
+        } else {
+            proposal.noVotes += weight;
+        }
+
+        proposal.hasVoted[msg.sender] = true;
+        emit Voted(proposalId, msg.sender, _vote, weight);
+    }
+
+
+    function checkProposal(uint proposalId) public view returns (string memory) {
+        Proposal storage proposal = proposals[proposalId];
+
+        require(block.timestamp > proposal.endTimestamp, "Voting not yet ended");
+
+        uint256 votesNeeded = (quorumPercent * token.totalSupply()) / 100;
+        if (proposal.yesVotes >= votesNeeded) {
+            return "Proposal passed";
+        } else {
+            return "Proposal failed";
+        }
+    }
+}
